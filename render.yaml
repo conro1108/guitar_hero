@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: fretboard
+    runtime: static
+    buildCommand: echo "Static site"
+    staticPublishPath: ./web
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=3600
