@@ -206,12 +206,16 @@ def draw_title_screen(stdscr):
 
     # Prompts
     prompt = "Press ENTER to start  •  Q to quit"
-    safe_addstr(stdscr, h - 3, (w - len(prompt)) // 2, prompt,
+    safe_addstr(stdscr, h - 4, (w - len(prompt)) // 2, prompt,
                 curses.color_pair(6) | curses.A_BOLD)
 
     howto = "H = How to Play"
-    safe_addstr(stdscr, h - 2, (w - len(howto)) // 2, howto,
+    safe_addstr(stdscr, h - 3, (w - len(howto)) // 2, howto,
                 curses.color_pair(5))
+
+    one_hand_hint = "One-hand mode available in song select (TAB)"
+    safe_addstr(stdscr, h - 2, (w - len(one_hand_hint)) // 2, one_hand_hint,
+                curses.color_pair(5) | curses.A_DIM)
 
     stdscr.refresh()
 
@@ -230,8 +234,11 @@ def draw_how_to_play(stdscr):
         ("Notes fall from the top of the screen.", curses.color_pair(5)),
         ("Press the matching key when they hit the line.", curses.color_pair(5)),
         ("", 0),
-        ("  D   F       J   K", curses.color_pair(6) | curses.A_BOLD),
+        ("  D   F       J   K  (two-hand mode)", curses.color_pair(6) | curses.A_BOLD),
         ("  Left hand   Right hand", curses.color_pair(5)),
+        ("", 0),
+        ("  F   G   H   J      (one-hand mode)", curses.color_pair(6) | curses.A_BOLD),
+        ("  Toggle with TAB in song select", curses.color_pair(5)),
         ("", 0),
         ("Timing:", curses.color_pair(6) | curses.A_BOLD),
         ("  PERFECT (±50ms)  = 100 pts", curses.color_pair(8) | curses.A_BOLD),
@@ -260,7 +267,8 @@ def draw_how_to_play(stdscr):
     stdscr.refresh()
 
 
-def draw_song_select(stdscr, songs: list, selected: int, high_scores: dict = None):
+def draw_song_select(stdscr, songs: list, selected: int, high_scores: dict = None,
+                     one_hand_mode: bool = False):
     """Draw the song selection screen."""
     h, w = stdscr.getmaxyx()
     stdscr.clear()
@@ -273,7 +281,18 @@ def draw_song_select(stdscr, songs: list, selected: int, high_scores: dict = Non
                 "Use ↑/↓ to navigate, ENTER to play, Q to quit",
                 curses.color_pair(5))
 
-    start_y = 5
+    # Mode indicator
+    if one_hand_mode:
+        mode_text = "Mode: One-Hand (F G H J)"
+    else:
+        mode_text = "Mode: Two-Hand (D F J K)"
+    safe_addstr(stdscr, 4, (w - len(mode_text)) // 2, mode_text,
+                curses.color_pair(7) | curses.A_BOLD)
+    tab_hint = "TAB = toggle mode"
+    safe_addstr(stdscr, 4, (w - len(mode_text)) // 2 + len(mode_text) + 2,
+                tab_hint, curses.color_pair(5) | curses.A_DIM)
+
+    start_y = 6
     for i, song in enumerate(songs):
         is_selected = i == selected
         y = start_y + i * 4
@@ -338,7 +357,8 @@ def draw_countdown(stdscr, value: int, song_name: str, fraction: float = 0.0):
 def draw_game(stdscr, state: GameState, current_time: float,
               last_grade: Optional[HitGrade] = None, grade_timer: float = 0,
               lane_flash: list = None, miss_markers: list = None,
-              combo_milestone: str = "", milestone_timer: float = 0):
+              combo_milestone: str = "", milestone_timer: float = 0,
+              key_labels: list = None):
     """Draw the main game screen."""
     h, w = stdscr.getmaxyx()
     stdscr.erase()
@@ -379,7 +399,7 @@ def draw_game(stdscr, state: GameState, current_time: float,
             safe_addstr(stdscr, hit_zone_y, x, zone_str, lane_hit_color(lane))
 
     # Draw lane labels below hit zone
-    lane_keys = ["D", "F", "J", "K"]
+    lane_keys = key_labels if key_labels else ["D", "F", "J", "K"]
     for lane in range(4):
         x = lane_start_x + lane * (lane_width + 1) + 1 + lane_width // 2
         attr = lane_color(lane) | curses.A_BOLD

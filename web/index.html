@@ -37,6 +37,8 @@ const LANE_COLORS = ['#00ff88', '#ff3366', '#ffcc00', '#3399ff'];
 const LANE_GLOW   = ['#00ff8855', '#ff336655', '#ffcc0055', '#3399ff55'];
 const LANE_KEYS   = ['D', 'F', 'J', 'K'];
 const KEY_CODES   = ['KeyD', 'KeyF', 'KeyJ', 'KeyK'];
+const ONE_HAND_KEYS = ['KeyF', 'KeyG', 'KeyH', 'KeyJ'];
+const ONE_HAND_LABELS = ['F', 'G', 'H', 'J'];
 const NUM_LANES   = 4;
 
 const PERFECT_WINDOW = 50;  // ms
@@ -54,6 +56,8 @@ const GRADES = [
 
 const COMBO_MILESTONES = [10, 25, 50, 100, 200];
 const DIFFICULTY_LABELS = {
+  'Tutorial': 'Two lanes, very slow. Your first song!',
+  'Chill': 'Three lanes, relaxed pace with rests.',
   'Easy': 'Single notes, gentle pace. Great for beginners!',
   'Easy-Med': 'Two-lane patterns and eighth notes.',
   'Medium': 'Syncopation and all four lanes.',
@@ -66,6 +70,10 @@ let state = 'title'; // title, howto, select, countdown, playing, paused, result
 let audioCtx = null;
 let selectedSong = 0;
 let debugMode = false;
+let oneHandMode = false;
+
+function getActiveKeyCodes() { return oneHandMode ? ONE_HAND_KEYS : KEY_CODES; }
+function getActiveKeyLabels() { return oneHandMode ? ONE_HAND_LABELS : LANE_KEYS; }
 
 // Gameplay state
 let songStartTime = 0;
@@ -167,6 +175,55 @@ function genSong(name, difficulty, bpm, stars, generator) {
 }
 
 function beat(bpm) { return 60 / bpm; }
+
+// Song: Twinkle Taps (Tutorial)
+genSong('Twinkle Taps', 'Tutorial', 65, 1, (bpm) => {
+  const b = beat(bpm);
+  const notes = [];
+  let t = 2;
+  // Simple alternating whole notes between lanes 0 and 1
+  for (let rep = 0; rep < 4; rep++) {
+    notes.push({ time: t, lane: 0 }); t += b * 4; // whole note
+    notes.push({ time: t, lane: 1 }); t += b * 4;
+  }
+  // Half notes alternating
+  for (let rep = 0; rep < 6; rep++) {
+    notes.push({ time: t, lane: rep % 2 }); t += b * 2; // half note
+  }
+  // Gentle ending pairs
+  notes.push({ time: t, lane: 0 }); t += b * 2;
+  notes.push({ time: t, lane: 1 }); t += b * 2;
+  return notes;
+});
+
+// Song: Lazy River (Chill)
+genSong('Lazy River', 'Chill', 80, 1, (bpm) => {
+  const b = beat(bpm);
+  const notes = [];
+  let t = 2;
+  // Phrase 1: simple descending pattern with rests (lanes 0,1,2)
+  for (let rep = 0; rep < 4; rep++) {
+    notes.push({ time: t, lane: 0 }); t += b;
+    notes.push({ time: t, lane: 1 }); t += b;
+    notes.push({ time: t, lane: 2 }); t += b;
+    t += b; // rest
+  }
+  // Phrase 2: ascending with rests
+  for (let rep = 0; rep < 4; rep++) {
+    notes.push({ time: t, lane: 2 }); t += b;
+    notes.push({ time: t, lane: 1 }); t += b;
+    notes.push({ time: t, lane: 0 }); t += b;
+    t += b; // rest
+  }
+  // Phrase 3: repeating pairs
+  for (let rep = 0; rep < 4; rep++) {
+    notes.push({ time: t, lane: 0 }); t += b;
+    notes.push({ time: t, lane: 0 }); t += b;
+    notes.push({ time: t, lane: 1 }); t += b;
+    notes.push({ time: t, lane: 2 }); t += b;
+  }
+  return notes;
+});
 
 // Song 1: First Steps
 genSong('First Steps', 'Easy', 100, 1, (bpm) => {
@@ -936,7 +993,7 @@ function drawPlayfield() {
     ctx.font = `bold ${Math.floor(lw * 0.35)}px monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(LANE_KEYS[lane], lx, hy + lw / 2 + 16);
+    ctx.fillText(getActiveKeyLabels()[lane], lx, hy + lw / 2 + 16);
   }
 }
 
@@ -1232,8 +1289,14 @@ function drawTitleScreen(time) {
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#ffffffcc';
     ctx.font = 'bold 13px monospace';
-    ctx.fillText(LANE_KEYS[i], x, previewY + 34);
+    ctx.fillText(getActiveKeyLabels()[i], x, previewY + 34);
   }
+
+  // One-hand mode indicator
+  const modeLabel = oneHandMode ? 'Mode: One-Hand (F G H J)' : 'Mode: Two-Hand (D F J K)';
+  ctx.fillStyle = '#ffffff55';
+  ctx.font = `${Math.min(14, W / 40)}px monospace`;
+  ctx.fillText(modeLabel, W / 2, previewY + 58);
 
   // Start prompt
   const promptAlpha = 0.4 + 0.6 * Math.abs(Math.sin(titlePulse * 1.5));
@@ -1268,8 +1331,8 @@ function drawHowToPlay() {
     { text: 'Notes fall from the top of the screen', color: '#ffffff' },
     { text: 'Press the matching key when they hit the line', color: '#ffffff' },
     { text: '', color: '' },
-    { text: 'D  F  J  K', color: '#ff3366', size: 'large' },
-    { text: 'Use both hands - left (D,F) and right (J,K)', color: '#ffffff88' },
+    { text: oneHandMode ? 'F  G  H  J' : 'D  F  J  K', color: '#ff3366', size: 'large' },
+    { text: oneHandMode ? 'One-hand mode - all keys in a row (F,G,H,J)' : 'Use both hands - left (D,F) and right (J,K)', color: '#ffffff88' },
     { text: '', color: '' },
     { text: `PERFECT (${PERFECT_WINDOW}ms) = 100pts    GOOD (${GOOD_WINDOW}ms) = 50pts`, color: '#ffcc00' },
     { text: 'Build combos for score multipliers!', color: '#00ff88' },
@@ -1325,7 +1388,7 @@ function drawSongSelect() {
 
   // Songs list
   const listTop = 100;
-  const itemH = Math.min(90, (H - 220) / 5);
+  const itemH = Math.min(90, (H - 220) / songs.length);
 
   for (let i = 0; i < songs.length; i++) {
     const s = songs[i];
@@ -1381,10 +1444,16 @@ function drawSongSelect() {
   ctx.font = `italic ${Math.min(15, W / 36)}px monospace`;
   ctx.fillText(desc, W / 2, descY);
 
+  // Mode status
+  const modeStatus = oneHandMode ? 'Mode: One-Hand (F G H J)' : 'Mode: Two-Hand (D F J K)';
+  ctx.fillStyle = oneHandMode ? '#ffcc0088' : '#ffffff55';
+  ctx.font = `${Math.min(14, W / 40)}px monospace`;
+  ctx.fillText(modeStatus, W / 2, H - 62);
+
   // Instructions
   ctx.fillStyle = '#ffffff55';
   ctx.font = `${Math.min(15, W / 36)}px monospace`;
-  ctx.fillText('UP/DOWN to navigate  |  ENTER to play  |  ESC to go back', W / 2, H - 40);
+  ctx.fillText('UP/DOWN = navigate | ENTER = play | TAB = Toggle One-Hand Mode | ESC = back', W / 2, H - 40);
 }
 
 function drawCountdown() {
@@ -1578,7 +1647,11 @@ window.addEventListener('keydown', (e) => {
       break;
 
     case 'select':
-      if (e.code === 'ArrowUp' || e.code === 'KeyW') {
+      if (e.code === 'Tab') {
+        e.preventDefault();
+        oneHandMode = !oneHandMode;
+        playMenuSound();
+      } else if (e.code === 'ArrowUp' || e.code === 'KeyW') {
         selectedSong = (selectedSong - 1 + songs.length) % songs.length;
         playMenuSound();
       } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
@@ -1611,12 +1684,13 @@ window.addEventListener('keydown', (e) => {
         debugMode = !debugMode;
         return;
       }
+      { const codes = getActiveKeyCodes();
       for (let i = 0; i < NUM_LANES; i++) {
-        if (e.code === KEY_CODES[i]) {
+        if (e.code === codes[i]) {
           lanePressed[i] = true;
           hitNote(i);
         }
-      }
+      } }
       break;
 
     case 'paused':
@@ -1653,8 +1727,9 @@ window.addEventListener('keydown', (e) => {
 
 window.addEventListener('keyup', (e) => {
   keysDown.delete(e.code);
+  const codes = getActiveKeyCodes();
   for (let i = 0; i < NUM_LANES; i++) {
-    if (e.code === KEY_CODES[i]) {
+    if (e.code === codes[i]) {
       lanePressed[i] = false;
     }
   }

@@ -28,7 +28,7 @@ from .renderer import (
     draw_title_screen,
     init_colors,
 )
-from .songs import LANE_KEYS, OK_WINDOW, GOOD_WINDOW, PERFECT_WINDOW, SONGS
+from .songs import LANE_KEYS, ONE_HAND_KEYS, ONE_HAND_NAMES, OK_WINDOW, GOOD_WINDOW, PERFECT_WINDOW, SONGS
 
 # Target frame rate
 TARGET_FPS = 60
@@ -106,8 +106,8 @@ def _how_to_play(stdscr):
         curses.napms(50)
 
 
-def _song_select(stdscr, high_scores: dict) -> int:
-    """Show song selection. Returns song index or -1 to quit."""
+def _song_select(stdscr, high_scores: dict, one_hand_mode: bool = False) -> tuple:
+    """Show song selection. Returns (song_index, one_hand_mode) or (-1, one_hand_mode) to quit."""
     selected = 0
     while True:
         if not _check_size(stdscr):
@@ -115,17 +115,19 @@ def _song_select(stdscr, high_scores: dict) -> int:
             curses.napms(500)
             continue
 
-        draw_song_select(stdscr, SONGS, selected, high_scores)
+        draw_song_select(stdscr, SONGS, selected, high_scores, one_hand_mode)
         key = stdscr.getch()
 
         if key in (ord("q"), ord("Q")):
-            return -1
+            return -1, one_hand_mode
+        elif key == 9:  # Tab key
+            one_hand_mode = not one_hand_mode
         elif key == curses.KEY_UP:
             selected = (selected - 1) % len(SONGS)
         elif key == curses.KEY_DOWN:
             selected = (selected + 1) % len(SONGS)
         elif key in (curses.KEY_ENTER, 10, 13):
-            return selected
+            return selected, one_hand_mode
 
         curses.napms(50)
 
@@ -160,9 +162,14 @@ def _countdown(stdscr, song_index: int) -> bool:
     return True
 
 
-def _play_song(stdscr, song_index: int, high_scores: dict) -> str:
+def _play_song(stdscr, song_index: int, high_scores: dict,
+               one_hand_mode: bool = False) -> str:
     """Play a song. Returns 'menu', 'replay', or 'quit'."""
     song = SONGS[song_index]
+
+    # Select keys based on mode
+    active_keys = ONE_HAND_KEYS if one_hand_mode else LANE_KEYS
+    key_labels = ONE_HAND_NAMES if one_hand_mode else ["D", "F", "J", "K"]
 
     # Countdown
     if not _countdown(stdscr, song_index):
@@ -208,8 +215,8 @@ def _play_song(stdscr, song_index: int, high_scores: dict) -> str:
                 elif not state.paused:
                     # Check lane keys
                     char = chr(key).lower() if 0 <= key < 256 else ""
-                    if char in LANE_KEYS:
-                        lane = LANE_KEYS.index(char)
+                    if char in active_keys:
+                        lane = active_keys.index(char)
                         prev_combo = state.combo
                         grade = process_hit(state, lane, current_time,
                                             PERFECT_WINDOW, GOOD_WINDOW,
@@ -260,7 +267,8 @@ def _play_song(stdscr, song_index: int, high_scores: dict) -> str:
 
             # Render
             draw_game(stdscr, state, current_time, last_grade, grade_timer,
-                      lane_flash, miss_markers, combo_milestone, milestone_timer)
+                      lane_flash, miss_markers, combo_milestone, milestone_timer,
+                      key_labels=key_labels)
 
             # Frame rate limiting
             elapsed_frame = time.time() - frame_start
@@ -318,14 +326,16 @@ def _game_loop(stdscr):
             continue
         break  # "play"
 
+    one_hand_mode = False
+
     # Main loop: song select -> play -> results -> repeat
     while True:
-        song_index = _song_select(stdscr, high_scores)
+        song_index, one_hand_mode = _song_select(stdscr, high_scores, one_hand_mode)
         if song_index == -1:
             return
 
         while True:
-            result = _play_song(stdscr, song_index, high_scores)
+            result = _play_song(stdscr, song_index, high_scores, one_hand_mode)
             if result == "replay":
                 # Replay same song
                 high_scores = _load_high_scores()  # Refresh

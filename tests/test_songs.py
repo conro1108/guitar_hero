@@ -22,8 +22,8 @@ class TestSongConstants:
 
 
 class TestSongDefinitions:
-    def test_five_songs_exist(self):
-        assert len(SONGS) == 5
+    def test_seven_songs_exist(self):
+        assert len(SONGS) == 7
 
     def test_all_songs_have_required_fields(self):
         for song in SONGS:

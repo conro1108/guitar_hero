@@ -12,6 +12,9 @@ tuples. Lanes: 0=D, 1=F, 2=J, 3=K.
 LANE_KEYS = ["d", "f", "j", "k"]
 LANE_NAMES = ["D", "F", "J", "K"]
 
+ONE_HAND_KEYS = ["f", "g", "h", "j"]
+ONE_HAND_NAMES = ["F", "G", "H", "J"]
+
 PERFECT_WINDOW = 0.05  # +/- 50ms
 GOOD_WINDOW = 0.10     # +/- 100ms
 OK_WINDOW = 0.15       # +/- 150ms
@@ -72,8 +75,102 @@ def _measure_end(notes: list[tuple[float, int]], bpm: int,
 
 
 # ---------------------------------------------------------------------------
-# Song 1 - "First Steps"
-# Easy (1), 100 BPM, ~45 seconds
+# Song 1 - "Twinkle Taps"
+# Easiest (1), 65 BPM, ~30 seconds
+# Only lanes 0 and 1 — whole notes and half notes, very slow.
+# Simple alternating pattern with lots of rest. Tutorial song.
+# ---------------------------------------------------------------------------
+
+def _build_twinkle_taps() -> dict:
+    bpm = 65
+    b = _beat(bpm)  # ~0.923s
+    notes: list[tuple[float, int]] = []
+
+    t = 1.5
+
+    # -- Section A: Whole notes on lane 0 (4 whole notes = 16 beats) --
+    for i in range(4):
+        notes.append((round(t, 4), 0))
+        t += 4 * b  # whole note spacing
+
+    # -- Section B: Whole notes on lane 1 (4 whole notes = 16 beats) --
+    for i in range(4):
+        notes.append((round(t, 4), 1))
+        t += 4 * b
+
+    # -- Section C: Alternating half notes, 0-1-0-1 (8 half notes) --
+    for i in range(8):
+        notes.append((round(t, 4), i % 2))
+        t += 2 * b  # half note spacing
+
+    # -- Section D: Short call-and-rest phrase (4 notes + rest) --
+    for lane in [0, 1, 1, 0]:
+        notes.append((round(t, 4), lane))
+        t += 2 * b
+
+    return {
+        "name": "Twinkle Taps",
+        "artist": "Tutorial",
+        "difficulty": 1,
+        "bpm": bpm,
+        "notes": sorted(notes, key=lambda n: (n[0], n[1])),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Song 2 - "Lazy River"
+# Easy (1), 80 BPM, ~35 seconds
+# Uses lanes 0, 1, 2 — quarter notes with rests between phrases.
+# Simple repeating 4-note phrases: ascending, descending, alternating.
+# ---------------------------------------------------------------------------
+
+def _build_lazy_river() -> dict:
+    bpm = 80
+    b = _beat(bpm)  # 0.75s
+    notes: list[tuple[float, int]] = []
+
+    t = 1.0
+
+    # -- Phrase A: Ascending 0-1-2, repeated twice with rest between --
+    phrase_a = _scale_run(0, bpm, [0, 1, 2, 1])
+    notes += _repeat(t, bpm, phrase_a, repeats=2, gap_beats=2)
+    t += 2 * (4 * b + 2 * b)  # 2 repeats of (4 notes + 2 beat gap)
+
+    # -- Phrase B: Descending 2-1-0, repeated twice with rest --
+    phrase_b = _scale_run(0, bpm, [2, 1, 0, 1])
+    notes += _repeat(t, bpm, phrase_b, repeats=2, gap_beats=2)
+    t += 2 * (4 * b + 2 * b)
+
+    # -- Phrase C: Alternating outer lanes 0-2-0-2, repeated twice --
+    phrase_c = _arpeggio(0, bpm, [0, 2, 0, 2], cycles=1)
+    notes += _repeat(t, bpm, phrase_c, repeats=2, gap_beats=2)
+    t += 2 * (4 * b + 2 * b)
+
+    # -- Phrase D: Stepwise walk 0-1-1-2, repeated twice --
+    phrase_d = _scale_run(0, bpm, [0, 1, 1, 2])
+    notes += _repeat(t, bpm, phrase_d, repeats=2, gap_beats=2)
+    t += 2 * (4 * b + 2 * b)
+
+    # -- Ending: Slow descending whole feel --
+    for lane in [2, 1, 0]:
+        notes.append((round(t, 4), lane))
+        t += 2 * b
+
+    # Final note
+    notes.append((round(t, 4), 0))
+
+    return {
+        "name": "Lazy River",
+        "artist": "Chill",
+        "difficulty": 1,
+        "bpm": bpm,
+        "notes": sorted(notes, key=lambda n: (n[0], n[1])),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Song 3 - "First Steps"
+# Easy (1), 100 BPM, ~45 seconds (originally Song 1)
 # Single lane at a time, gentle quarter-note introduction.
 # Teaches each finger individually, then simple combinations.
 # ---------------------------------------------------------------------------
@@ -176,7 +273,7 @@ def _build_first_steps() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Song 2 - "Steady Groove"
+# Song 4 - "Steady Groove"
 # Easy-Medium (2), 110 BPM, ~50 seconds
 # Two-lane patterns, some eighth notes, groove-oriented.
 # ---------------------------------------------------------------------------
@@ -265,7 +362,7 @@ def _build_steady_groove() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Song 3 - "Neon Nights"
+# Song 5 - "Neon Nights"
 # Medium (3), 120 BPM, ~55 seconds
 # All four lanes, syncopation, moderate density.
 # ---------------------------------------------------------------------------
@@ -372,7 +469,7 @@ def _build_neon_nights() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Song 4 - "Thunder Road"
+# Song 6 - "Thunder Road"
 # Hard (4), 140 BPM, ~50 seconds
 # Fast runs, chord-like simultaneous notes, complex patterns.
 # ---------------------------------------------------------------------------
@@ -454,7 +551,7 @@ def _build_thunder_road() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Song 5 - "Final Boss"
+# Song 7 - "Final Boss"
 # Expert (5), 160 BPM, ~55 seconds
 # Extremely dense, rapid lane switching, four-finger independence.
 # ---------------------------------------------------------------------------
@@ -583,6 +680,8 @@ def _build_final_boss() -> dict:
 # ---------------------------------------------------------------------------
 
 SONGS: list[dict] = [
+    _build_twinkle_taps(),
+    _build_lazy_river(),
     _build_first_steps(),
     _build_steady_groove(),
     _build_neon_nights(),
