@@ -428,10 +428,12 @@ def draw_game(stdscr, state: GameState, current_time: float,
         if time_until_hit < -0.2 or time_until_hit > VISIBLE_WINDOW:
             continue
 
-        # Map time to screen position (0 = hit zone, VISIBLE_WINDOW = top)
+        # Map time to screen position
+        # progress 0.0 = top of playfield, 1.0 = at the hit zone row
         progress = 1.0 - (time_until_hit / VISIBLE_WINDOW)
-        note_y = notes_top_y + int(progress * playfield_height)
+        note_y = notes_top_y + round(progress * (playfield_height + 1))
 
+        # Allow notes to render up to and including the hit zone row
         if note_y < notes_top_y or note_y > hit_zone_y:
             continue
 
