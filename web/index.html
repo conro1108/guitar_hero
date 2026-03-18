@@ -964,18 +964,39 @@ function drawPlayfield() {
     const flash = hitFlash[lane];
     const pressed = lanePressed[lane];
 
+    // Hit zone dimensions (match note shape)
+    const noteW = lw - 12;
+    const noteH = lw * 0.45;
+    const radius = noteH / 3;
+    const nx = lx - noteW / 2;
+    const ny = hy - noteH / 2;
+
+    function hitZoneRoundRect() {
+      ctx.beginPath();
+      ctx.moveTo(nx + radius, ny);
+      ctx.lineTo(nx + noteW - radius, ny);
+      ctx.quadraticCurveTo(nx + noteW, ny, nx + noteW, ny + radius);
+      ctx.lineTo(nx + noteW, ny + noteH - radius);
+      ctx.quadraticCurveTo(nx + noteW, ny + noteH, nx + noteW - radius, ny + noteH);
+      ctx.lineTo(nx + radius, ny + noteH);
+      ctx.quadraticCurveTo(nx, ny + noteH, nx, ny + noteH - radius);
+      ctx.lineTo(nx, ny + radius);
+      ctx.quadraticCurveTo(nx, ny, nx + radius, ny);
+      ctx.closePath();
+    }
+
     // Beat pulse ring (subtle)
     if (beatPulse > 0.1) {
+      const expand = beatPulse * 6;
       ctx.beginPath();
-      ctx.arc(lx, hy, lw / 2 - 4 + beatPulse * 6, 0, Math.PI * 2);
+      ctx.roundRect(nx - expand, ny - expand, noteW + expand * 2, noteH + expand * 2, radius + expand / 2);
       ctx.strokeStyle = LANE_COLORS[lane] + Math.floor(beatPulse * 30).toString(16).padStart(2, '0');
       ctx.lineWidth = 1;
       ctx.stroke();
     }
 
-    // Hit zone circle
-    ctx.beginPath();
-    ctx.arc(lx, hy, lw / 2 - 4, 0, Math.PI * 2);
+    // Hit zone rounded rectangle (matches note shape)
+    hitZoneRoundRect();
     if (pressed || flash > 0) {
       const alpha = pressed ? 0.5 : Math.min(1, flash * 2);
       ctx.fillStyle = LANE_COLORS[lane] + Math.floor(alpha * 200).toString(16).padStart(2, '0');
