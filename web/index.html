@@ -2,11 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>FRETBOARD</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0f; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 canvas { display: block; width: 100%; height: 100%; }
 </style>
 </head>
@@ -40,6 +40,10 @@ const KEY_CODES   = ['KeyD', 'KeyF', 'KeyJ', 'KeyK'];
 const ONE_HAND_KEYS = ['KeyF', 'KeyG', 'KeyH', 'KeyJ'];
 const ONE_HAND_LABELS = ['F', 'G', 'H', 'J'];
 const NUM_LANES   = 4;
+
+// --- Mobile / Touch Detection ---
+const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+const TOUCH_BUTTON_HEIGHT = 100; // height of touch zone at bottom
 
 const PERFECT_WINDOW = 50;  // ms
 const GOOD_WINDOW    = 100; // ms
@@ -891,7 +895,10 @@ function drawParticles() {
 function getLaneWidth() { return Math.min(80, W / 6); }
 function getPlayfieldWidth() { return getLaneWidth() * NUM_LANES + (NUM_LANES + 1) * 8; }
 function getPlayfieldX() { return (W - getPlayfieldWidth()) / 2; }
-function getHitY() { return H - Math.max(160, H * 0.2); }
+function getHitY() {
+  const bottomMargin = isTouchDevice ? TOUCH_BUTTON_HEIGHT + 80 : Math.max(160, H * 0.2);
+  return H - bottomMargin;
+}
 function getLaneX(lane) {
   const pfx = getPlayfieldX();
   const lw = getLaneWidth();
@@ -1178,12 +1185,14 @@ function drawPlayfield() {
     ctx.stroke();
     ctx.shadowBlur = 0;
 
-    // Key label
-    ctx.fillStyle = LANE_COLORS[lane];
-    ctx.font = `bold ${Math.floor(lw * 0.35)}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(getActiveKeyLabels()[lane], lx, hy + lw / 2 + 16);
+    // Key label (keyboard only)
+    if (!isTouchDevice) {
+      ctx.fillStyle = LANE_COLORS[lane];
+      ctx.font = `bold ${Math.floor(lw * 0.35)}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(getActiveKeyLabels()[lane], lx, hy + lw / 2 + 16);
+    }
   }
 }
 
@@ -1385,6 +1394,21 @@ function drawHUD() {
     ctx.shadowBlur = 0;
   }
 
+  // Touch pause button (top-right corner)
+  if (isTouchDevice && state === 'playing') {
+    const pbSize = 44;
+    const pbX = W - pbSize - 10;
+    const pbY = 10;
+    ctx.fillStyle = '#ffffff15';
+    ctx.beginPath();
+    ctx.roundRect(pbX, pbY, pbSize, pbSize, 8);
+    ctx.fill();
+    // Draw pause icon (two bars)
+    ctx.fillStyle = '#ffffff88';
+    ctx.fillRect(pbX + 14, pbY + 12, 6, 20);
+    ctx.fillRect(pbX + 24, pbY + 12, 6, 20);
+  }
+
   // Miss flash overlay
   if (missFlashTimer > 0) {
     ctx.fillStyle = `rgba(255, 30, 60, ${missFlashTimer * 0.3})`;
@@ -1418,8 +1442,8 @@ function drawHUD() {
 
     ctx.font = '18px monospace';
     ctx.fillStyle = '#ffffff88';
-    ctx.fillText('ESC to resume', W / 2, H / 2 + 20);
-    ctx.fillText('Q to quit to menu', W / 2, H / 2 + 48);
+    ctx.fillText(isTouchDevice ? 'Tap top half to resume' : 'ESC to resume', W / 2, H / 2 + 20);
+    ctx.fillText(isTouchDevice ? 'Tap bottom half to quit' : 'Q to quit to menu', W / 2, H / 2 + 48);
   }
 
   // FPS
@@ -1430,6 +1454,60 @@ function drawHUD() {
     ctx.textBaseline = 'bottom';
     ctx.fillText(`FPS: ${fps}`, W - 10, H - 10);
   }
+}
+
+function drawTouchButtons() {
+  if (!isTouchDevice) return;
+  if (state !== 'playing' && state !== 'paused') return;
+
+  const btnH = TOUCH_BUTTON_HEIGHT;
+  const btnY = H - btnH;
+  const btnW = W / NUM_LANES;
+
+  for (let lane = 0; lane < NUM_LANES; lane++) {
+    const bx = lane * btnW;
+    const pressed = lanePressed[lane];
+    const flash = hitFlash[lane];
+
+    // Button background
+    const alpha = pressed ? 0.35 : 0.12;
+    ctx.fillStyle = LANE_COLORS[lane] + Math.floor(alpha * 255).toString(16).padStart(2, '0');
+    ctx.fillRect(bx, btnY, btnW, btnH);
+
+    // Glow on press/hit
+    if (pressed || flash > 0) {
+      const glowAlpha = pressed ? 0.2 : Math.min(0.3, flash * 0.4);
+      ctx.fillStyle = LANE_COLORS[lane] + Math.floor(glowAlpha * 255).toString(16).padStart(2, '0');
+      ctx.fillRect(bx, btnY - 10, btnW, btnH + 10);
+    }
+
+    // Divider lines
+    if (lane > 0) {
+      ctx.strokeStyle = '#ffffff20';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(bx, btnY);
+      ctx.lineTo(bx, H);
+      ctx.stroke();
+    }
+
+    // Lane color dot
+    ctx.fillStyle = LANE_COLORS[lane];
+    ctx.shadowColor = LANE_COLORS[lane];
+    ctx.shadowBlur = pressed ? 15 : 5;
+    ctx.beginPath();
+    ctx.arc(bx + btnW / 2, btnY + btnH / 2, pressed ? 16 : 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Top border line
+  ctx.strokeStyle = '#ffffff30';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, btnY);
+  ctx.lineTo(W, btnY);
+  ctx.stroke();
 }
 
 function drawTitleScreen(time) {
@@ -1477,29 +1555,35 @@ function drawTitleScreen(time) {
     ctx.arc(x, previewY + bounce, 14, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = '#ffffffcc';
-    ctx.font = 'bold 13px monospace';
-    ctx.fillText(getActiveKeyLabels()[i], x, previewY + 34);
+    if (!isTouchDevice) {
+      ctx.fillStyle = '#ffffffcc';
+      ctx.font = 'bold 13px monospace';
+      ctx.fillText(getActiveKeyLabels()[i], x, previewY + 34);
+    }
   }
 
-  // One-hand mode indicator
-  const modeLabel = oneHandMode ? 'Mode: One-Hand (F G H J)' : 'Mode: Two-Hand (D F J K)';
-  ctx.fillStyle = '#ffffff55';
-  ctx.font = `${Math.min(14, W / 40)}px monospace`;
-  ctx.fillText(modeLabel, W / 2, previewY + 58);
+  // One-hand mode indicator (keyboard only)
+  if (!isTouchDevice) {
+    const modeLabel = oneHandMode ? 'Mode: One-Hand (F G H J)' : 'Mode: Two-Hand (D F J K)';
+    ctx.fillStyle = '#ffffff55';
+    ctx.font = `${Math.min(14, W / 40)}px monospace`;
+    ctx.fillText(modeLabel, W / 2, previewY + 58);
+  }
 
   // Start prompt
   const promptAlpha = 0.4 + 0.6 * Math.abs(Math.sin(titlePulse * 1.5));
   ctx.globalAlpha = promptAlpha;
   ctx.fillStyle = '#ffffff';
   ctx.font = `bold ${Math.min(22, W / 25)}px monospace`;
-  ctx.fillText('PRESS ENTER TO START', W / 2, H - 120);
+  ctx.fillText(isTouchDevice ? 'TAP TO START' : 'PRESS ENTER TO START', W / 2, H - 120);
   ctx.globalAlpha = 1;
 
-  // How to play prompt
-  ctx.fillStyle = '#ffffff55';
-  ctx.font = `${Math.min(16, W / 35)}px monospace`;
-  ctx.fillText('Press H for How to Play', W / 2, H - 80);
+  // How to play prompt (hide on mobile — touch is self-explanatory)
+  if (!isTouchDevice) {
+    ctx.fillStyle = '#ffffff55';
+    ctx.font = `${Math.min(16, W / 35)}px monospace`;
+    ctx.fillText('Press H for How to Play', W / 2, H - 80);
+  }
 
   ctx.restore();
 }
@@ -1517,7 +1601,14 @@ function drawHowToPlay() {
 
   const startY = 120;
   const lineH = Math.min(40, (H - 240) / 9);
-  const items = [
+  const items = isTouchDevice ? [
+    { text: 'Notes fall from the top of the screen', color: '#ffffff' },
+    { text: 'Tap the matching lane when notes hit the line', color: '#ffffff' },
+    { text: '', color: '' },
+    { text: `PERFECT (${PERFECT_WINDOW}ms) = 100pts    GOOD (${GOOD_WINDOW}ms) = 50pts`, color: '#ffcc00' },
+    { text: 'Build combos for score multipliers!', color: '#00ff88' },
+    { text: '10x=2x  30x=3x  50x=4x multiplier', color: '#00ff88' },
+  ] : [
     { text: 'Notes fall from the top of the screen', color: '#ffffff' },
     { text: 'Press the matching key when they hit the line', color: '#ffffff' },
     { text: '', color: '' },
@@ -1562,7 +1653,7 @@ function drawHowToPlay() {
   // Back prompt
   ctx.fillStyle = '#ffffff66';
   ctx.font = `${Math.min(16, W / 35)}px monospace`;
-  ctx.fillText('Press ESC or ENTER to go back', W / 2, H - 40);
+  ctx.fillText(isTouchDevice ? 'Tap anywhere to go back' : 'Press ESC or ENTER to go back', W / 2, H - 40);
 }
 
 function drawSongSelect() {
@@ -1634,16 +1725,20 @@ function drawSongSelect() {
   ctx.font = `italic ${Math.min(15, W / 36)}px monospace`;
   ctx.fillText(desc, W / 2, descY);
 
-  // Mode status
-  const modeStatus = oneHandMode ? 'Mode: One-Hand (F G H J)' : 'Mode: Two-Hand (D F J K)';
-  ctx.fillStyle = oneHandMode ? '#ffcc0088' : '#ffffff55';
-  ctx.font = `${Math.min(14, W / 40)}px monospace`;
-  ctx.fillText(modeStatus, W / 2, H - 62);
+  // Mode status (keyboard only)
+  if (!isTouchDevice) {
+    const modeStatus = oneHandMode ? 'Mode: One-Hand (F G H J)' : 'Mode: Two-Hand (D F J K)';
+    ctx.fillStyle = oneHandMode ? '#ffcc0088' : '#ffffff55';
+    ctx.font = `${Math.min(14, W / 40)}px monospace`;
+    ctx.fillText(modeStatus, W / 2, H - 62);
+  }
 
   // Instructions
   ctx.fillStyle = '#ffffff55';
   ctx.font = `${Math.min(15, W / 36)}px monospace`;
-  ctx.fillText('UP/DOWN = navigate | ENTER = play | TAB = Toggle One-Hand Mode | ESC = back', W / 2, H - 40);
+  ctx.fillText(isTouchDevice
+    ? 'Tap a song to select \u2022 Tap again to play'
+    : 'UP/DOWN = navigate | ENTER = play | TAB = Toggle One-Hand Mode | ESC = back', W / 2, H - 40);
 }
 
 function drawCountdown() {
@@ -1800,10 +1895,12 @@ function drawResultsScreen() {
     ctx.globalAlpha = alpha;
     ctx.fillStyle = '#ffffff';
     ctx.font = `bold ${Math.min(20, W / 28)}px monospace`;
-    ctx.fillText('PRESS ENTER TO CONTINUE', W / 2, H - 50);
-    ctx.fillStyle = '#ffffff66';
-    ctx.font = `${Math.min(15, W / 36)}px monospace`;
-    ctx.fillText('R to replay', W / 2, H - 25);
+    ctx.fillText(isTouchDevice ? 'TAP TO CONTINUE' : 'PRESS ENTER TO CONTINUE', W / 2, H - 50);
+    if (!isTouchDevice) {
+      ctx.fillStyle = '#ffffff66';
+      ctx.font = `${Math.min(15, W / 36)}px monospace`;
+      ctx.fillText('R to replay', W / 2, H - 25);
+    }
     ctx.globalAlpha = 1;
   }
 }
@@ -1925,6 +2022,142 @@ window.addEventListener('keyup', (e) => {
   }
 });
 
+// --- Touch Input ---
+if (isTouchDevice) {
+  // Get which lane a touch x-coordinate falls in during gameplay
+  function getTouchLane(x) {
+    const btnW = W / NUM_LANES;
+    const lane = Math.floor(x / btnW);
+    return Math.max(0, Math.min(NUM_LANES - 1, lane));
+  }
+
+  // Track active touches per lane to handle multi-touch properly
+  const activeTouches = new Map(); // touch identifier -> lane
+
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    ensureAudio();
+
+    for (const touch of e.changedTouches) {
+      const x = touch.clientX;
+      const y = touch.clientY;
+
+      switch (state) {
+        case 'title':
+          playSelectSound();
+          state = 'select';
+          selectedSong = 0;
+          break;
+
+        case 'howto':
+          playSelectSound();
+          state = 'title';
+          break;
+
+        case 'select': {
+          // Tap on a song to select it, tap the selected song to play
+          const listTop = 100;
+          const itemH = Math.min(90, (H - 220) / songs.length);
+          let tappedSong = -1;
+          for (let i = 0; i < songs.length; i++) {
+            const sy = listTop + i * itemH;
+            if (y >= sy && y < sy + itemH) {
+              tappedSong = i;
+              break;
+            }
+          }
+          if (tappedSong >= 0) {
+            if (tappedSong === selectedSong) {
+              playSelectSound();
+              startCountdown(selectedSong);
+            } else {
+              selectedSong = tappedSong;
+              playMenuSound();
+            }
+          }
+          // Tap on mode toggle area (bottom of screen)
+          if (y > H - 80) {
+            oneHandMode = !oneHandMode;
+            playMenuSound();
+          }
+          break;
+        }
+
+        case 'countdown':
+          break;
+
+        case 'playing': {
+          // Check pause button (top-right corner)
+          const pbSize = 44;
+          const pbX = W - pbSize - 10;
+          const pbY = 10;
+          if (x >= pbX && x <= pbX + pbSize && y >= pbY && y <= pbY + pbSize) {
+            state = 'paused';
+            pauseStart = performance.now() / 1000;
+            stopBackgroundBeat();
+            break;
+          }
+          const lane = getTouchLane(x);
+          activeTouches.set(touch.identifier, lane);
+          lanePressed[lane] = true;
+          hitNote(lane);
+          break;
+        }
+
+        case 'paused':
+          // Top half = resume, bottom half = quit
+          if (y < H / 2) {
+            pausedAccum += performance.now() / 1000 - pauseStart;
+            state = 'playing';
+            startBackgroundBeat(songs[selectedSong].bpm);
+          } else {
+            stopBackgroundBeat();
+            state = 'select';
+          }
+          break;
+
+        case 'results':
+          if (resultsTimer > 2.2) {
+            playSelectSound();
+            state = 'select';
+          }
+          break;
+      }
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    for (const touch of e.changedTouches) {
+      const lane = activeTouches.get(touch.identifier);
+      if (lane !== undefined) {
+        activeTouches.delete(touch.identifier);
+        // Only release lane if no other touch is on it
+        let stillPressed = false;
+        for (const [, l] of activeTouches) {
+          if (l === lane) { stillPressed = true; break; }
+        }
+        if (!stillPressed) lanePressed[lane] = false;
+      }
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchcancel', (e) => {
+    e.preventDefault();
+    for (const touch of e.changedTouches) {
+      const lane = activeTouches.get(touch.identifier);
+      if (lane !== undefined) {
+        activeTouches.delete(touch.identifier);
+        let stillPressed = false;
+        for (const [, l] of activeTouches) {
+          if (l === lane) { stillPressed = true; break; }
+        }
+        if (!stillPressed) lanePressed[lane] = false;
+      }
+    }
+  }, { passive: false });
+}
+
 // --- Pause on focus loss ---
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && state === 'playing') {
@@ -2036,6 +2269,7 @@ function gameLoop(timestamp) {
       drawNotes();
       drawParticles();
       drawHUD();
+      drawTouchButtons();
 
       if (shakeAmount > 0.1) {
         ctx.restore();
@@ -2048,6 +2282,7 @@ function gameLoop(timestamp) {
       drawPlayfield();
       drawNotes();
       drawHUD();
+      drawTouchButtons();
       break;
 
     case 'results':
