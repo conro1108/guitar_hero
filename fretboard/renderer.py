@@ -367,7 +367,7 @@ def draw_game(stdscr, state: GameState, current_time: float,
     total_lane_width = lane_width * 4 + 5  # 4 lanes + separators
     lane_start_x = (w - total_lane_width) // 2
 
-    hit_zone_y = h - 4
+    hit_zone_y = h - max(6, h // 5)
     notes_top_y = 3
 
     playfield_height = hit_zone_y - notes_top_y
@@ -432,7 +432,7 @@ def draw_game(stdscr, state: GameState, current_time: float,
         progress = 1.0 - (time_until_hit / VISIBLE_WINDOW)
         note_y = notes_top_y + int(progress * playfield_height)
 
-        if note_y < notes_top_y or note_y >= hit_zone_y:
+        if note_y < notes_top_y or note_y > hit_zone_y:
             continue
 
         x = lane_start_x + note.lane * (lane_width + 1) + 1
