@@ -33,13 +33,22 @@ resize();
 window.addEventListener('resize', resize);
 
 // --- Constants ---
-const LANE_COLORS = ['#00ff88', '#ff3366', '#ffcc00', '#3399ff'];
-const LANE_GLOW   = ['#00ff8855', '#ff336655', '#ffcc0055', '#3399ff55'];
-const LANE_KEYS   = ['D', 'F', 'J', 'K'];
-const KEY_CODES   = ['KeyD', 'KeyF', 'KeyJ', 'KeyK'];
-const ONE_HAND_KEYS = ['KeyF', 'KeyG', 'KeyH', 'KeyJ'];
-const ONE_HAND_LABELS = ['F', 'G', 'H', 'J'];
-const NUM_LANES   = 4;
+const LANE_COLORS = ['#00ff88','#ff3366','#ffcc00','#3399ff','#ff9933','#aa66ff','#00ccff','#ff6688'];
+const LANE_GLOW   = ['#00ff8855','#ff336655','#ffcc0055','#3399ff55','#ff993355','#aa66ff55','#00ccff55','#ff668855'];
+
+// Key maps — 2H: keysPerHand → {left, right, labels}
+const TWO_HAND_MAPS = {
+  2: { left:['KeyD','KeyF'],               right:['KeyJ','KeyK'],               labels:['D','F','J','K'] },
+  3: { left:['KeyD','KeyF','KeyG'],         right:['KeyH','KeyJ','KeyK'],         labels:['D','F','G','H','J','K'] },
+  4: { left:['KeyS','KeyD','KeyF','KeyG'],  right:['KeyH','KeyJ','KeyK','KeyL'],  labels:['S','D','F','G','H','J','K','L'] },
+};
+// Key maps — 1H: fingerCount → {codes, labels}
+const ONE_HAND_MAPS = {
+  3: { codes:['KeyF','KeyG','KeyH'],                labels:['F','G','H'] },
+  4: { codes:['KeyF','KeyG','KeyH','KeyJ'],          labels:['F','G','H','J'] },
+  5: { codes:['KeyF','KeyG','KeyH','KeyJ','KeyK'],   labels:['F','G','H','J','K'] },
+};
+const CENTER_GAP_2H = 28; // physical gap (px) between hands in 2H mode
 
 // --- Mobile / Touch Detection ---
 const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
@@ -75,6 +84,8 @@ let audioCtx = null;
 let selectedSong = 0;
 let debugMode = false;
 let oneHandMode = false;
+let twoHandCount = 2;  // keys per hand in 2H mode: 2, 3, or 4
+let oneHandCount = 4;  // total fingers in 1H mode: 3, 4, or 5
 
 // Custom key bindings (persisted in localStorage)
 let customKeyCodes = null;
@@ -129,13 +140,19 @@ const RESERVED_BIND_KEYS = new Set([
   'AltLeft','AltRight','MetaLeft','MetaRight',
 ]);
 
+function getNumLanes() {
+  return oneHandMode ? oneHandCount : twoHandCount * 2;
+}
 function getActiveKeyCodes() {
   if (customKeyCodes) return customKeyCodes;
-  return oneHandMode ? ONE_HAND_KEYS : KEY_CODES;
+  if (oneHandMode) return ONE_HAND_MAPS[oneHandCount].codes;
+  const m = TWO_HAND_MAPS[twoHandCount];
+  return [...m.left, ...m.right];
 }
 function getActiveKeyLabels() {
   if (customKeyLabels) return customKeyLabels;
-  return oneHandMode ? ONE_HAND_LABELS : LANE_KEYS;
+  if (oneHandMode) return ONE_HAND_MAPS[oneHandCount].labels;
+  return TWO_HAND_MAPS[twoHandCount].labels;
 }
 
 // Gameplay state
@@ -231,16 +248,16 @@ function saveHighScore(songName, newScore, newAccuracy, newMaxCombo, newGrade) {
 // --- Songs ---
 const songs = [];
 
-function genSong(name, difficulty, bpm, stars, generator) {
+function genSong(name, difficulty, bpm, stars, minLanes, generator) {
   const notes = generator(bpm);
   notes.sort((a, b) => a.time - b.time);
-  songs.push({ name, difficulty, bpm, stars, notes });
+  songs.push({ name, difficulty, bpm, stars, minLanes, notes });
 }
 
 function beat(bpm) { return 60 / bpm; }
 
 // Song: Twinkle Taps (Tutorial)
-genSong('Twinkle Taps', 'Tutorial', 65, 1, (bpm) => {
+genSong('Twinkle Taps', 'Tutorial', 65, 1, 2, (bpm) => {
   const b = beat(bpm);
   const notes = [];
   let t = 2;
@@ -260,7 +277,7 @@ genSong('Twinkle Taps', 'Tutorial', 65, 1, (bpm) => {
 });
 
 // Song: Lazy River (Chill)
-genSong('Lazy River', 'Chill', 80, 1, (bpm) => {
+genSong('Lazy River', 'Chill', 80, 1, 3, (bpm) => {
   const b = beat(bpm);
   const notes = [];
   let t = 2;
@@ -289,7 +306,7 @@ genSong('Lazy River', 'Chill', 80, 1, (bpm) => {
 });
 
 // Song 1: First Steps
-genSong('First Steps', 'Easy', 100, 1, (bpm) => {
+genSong('First Steps', 'Easy', 100, 1, 4, (bpm) => {
   const b = beat(bpm);
   const notes = [];
   let t = 2;
@@ -321,7 +338,7 @@ genSong('First Steps', 'Easy', 100, 1, (bpm) => {
 });
 
 // Song 2: Steady Groove
-genSong('Steady Groove', 'Easy-Med', 110, 2, (bpm) => {
+genSong('Steady Groove', 'Easy-Med', 110, 2, 4, (bpm) => {
   const b = beat(bpm);
   const notes = [];
   let t = 2;
@@ -354,162 +371,6 @@ genSong('Steady Groove', 'Easy-Med', 110, 2, (bpm) => {
   return notes;
 });
 
-// Song 3: Neon Nights
-genSong('Neon Nights', 'Medium', 120, 3, (bpm) => {
-  const b = beat(bpm);
-  const notes = [];
-  let t = 2;
-  for (let i = 0; i < 8; i++) {
-    notes.push({ time: t, lane: 1 });
-    t += b;
-  }
-  for (let rep = 0; rep < 4; rep++) {
-    notes.push({ time: t, lane: 0 }); t += b * 0.75;
-    notes.push({ time: t, lane: 1 }); t += b * 0.75;
-    notes.push({ time: t, lane: 2 }); t += b * 0.5;
-    notes.push({ time: t, lane: 3 }); t += b;
-    notes.push({ time: t, lane: 2 }); t += b * 0.5;
-    notes.push({ time: t, lane: 1 }); t += b * 0.5;
-  }
-  const pattern = [0,2,1,3,0,3,1,2];
-  for (let rep = 0; rep < 3; rep++) {
-    for (let i = 0; i < pattern.length; i++) {
-      notes.push({ time: t, lane: pattern[i] });
-      t += b * 0.5;
-    }
-    t += b;
-  }
-  for (let rep = 0; rep < 4; rep++) {
-    for (let i = 0; i < 4; i++) {
-      notes.push({ time: t, lane: i });
-      t += b * 0.25;
-    }
-    t += b * 0.5;
-    for (let i = 3; i >= 0; i--) {
-      notes.push({ time: t, lane: i });
-      t += b * 0.25;
-    }
-    t += b * 0.5;
-  }
-  for (let i = 0; i < 4; i++) {
-    notes.push({ time: t, lane: i });
-    t += b * 2;
-  }
-  return notes;
-});
-
-// Song 4: Thunder Road
-genSong('Thunder Road', 'Hard', 140, 4, (bpm) => {
-  const b = beat(bpm);
-  const notes = [];
-  let t = 2;
-  for (let rep = 0; rep < 2; rep++) {
-    for (let i = 0; i < 4; i++) {
-      notes.push({ time: t, lane: i }); t += b * 0.25;
-    }
-    t += b;
-  }
-  for (let rep = 0; rep < 8; rep++) {
-    notes.push({ time: t, lane: 0 }); t += b * 0.25;
-    notes.push({ time: t, lane: 0 }); t += b * 0.25;
-    notes.push({ time: t, lane: rep % 4 }); t += b * 0.5;
-  }
-  for (let rep = 0; rep < 4; rep++) {
-    const lanes = rep % 2 === 0 ? [0,1,2,3,3,2,1,0] : [3,2,1,0,0,1,2,3];
-    for (let i = 0; i < lanes.length; i++) {
-      notes.push({ time: t, lane: lanes[i] });
-      t += b * 0.25;
-    }
-    t += b * 0.5;
-  }
-  for (let rep = 0; rep < 4; rep++) {
-    notes.push({ time: t, lane: 0 }); t += b * 0.5;
-    notes.push({ time: t, lane: 2 }); t += b * 0.33;
-    notes.push({ time: t, lane: 1 }); t += b * 0.33;
-    notes.push({ time: t, lane: 3 }); t += b * 0.33;
-    notes.push({ time: t, lane: 0 }); t += b * 0.5;
-  }
-  for (let rep = 0; rep < 4; rep++) {
-    for (let i = 0; i < 4; i++) {
-      notes.push({ time: t, lane: (i + rep) % 4 });
-      notes.push({ time: t + b * 0.125, lane: (i + rep + 1) % 4 });
-      t += b * 0.5;
-    }
-  }
-  for (let i = 0; i < 16; i++) {
-    notes.push({ time: t, lane: i % 2 === 0 ? 0 : 3 });
-    t += b * 0.25;
-  }
-  for (let i = 0; i < 4; i++) {
-    notes.push({ time: t, lane: i }); t += b * 0.5;
-  }
-  return notes;
-});
-
-// Song 5: Final Boss
-genSong('Final Boss', 'Expert', 160, 5, (bpm) => {
-  const b = beat(bpm);
-  const notes = [];
-  let t = 2;
-  for (let i = 0; i < 16; i++) {
-    notes.push({ time: t, lane: i % 4 });
-    t += b * 0.25;
-  }
-  t += b;
-  for (let rep = 0; rep < 6; rep++) {
-    const dirs = [[0,1,2,3],[3,2,1,0],[0,2,1,3],[3,1,2,0],[0,3,1,2],[2,1,3,0]];
-    const dir = dirs[rep % dirs.length];
-    for (let i = 0; i < 4; i++) {
-      notes.push({ time: t, lane: dir[i] });
-      t += b * 0.1875;
-    }
-    t += b * 0.25;
-  }
-  for (let rep = 0; rep < 4; rep++) {
-    const l1 = rep % 4;
-    const l2 = (rep + 1) % 4;
-    for (let i = 0; i < 8; i++) {
-      notes.push({ time: t, lane: i % 2 === 0 ? l1 : l2 });
-      t += b * 0.25;
-    }
-    t += b * 0.5;
-  }
-  for (let rep = 0; rep < 4; rep++) {
-    for (let i = 0; i < 4; i++) {
-      notes.push({ time: t, lane: i });
-      t += b * 0.125;
-    }
-    for (let i = 3; i >= 0; i--) {
-      notes.push({ time: t, lane: i });
-      t += b * 0.125;
-    }
-    t += b * 0.25;
-  }
-  const syncPattern = [0,0,2,0,1,3,2,3,1,0,3,2];
-  for (let rep = 0; rep < 3; rep++) {
-    for (let i = 0; i < syncPattern.length; i++) {
-      notes.push({ time: t, lane: syncPattern[i] });
-      t += b * (i % 3 === 0 ? 0.375 : 0.25);
-    }
-    t += b * 0.5;
-  }
-  for (let rep = 0; rep < 2; rep++) {
-    for (let i = 0; i < 4; i++) {
-      notes.push({ time: t, lane: i }); t += b * 0.125;
-    }
-    for (let i = 3; i >= 0; i--) {
-      notes.push({ time: t, lane: i }); t += b * 0.125;
-    }
-    for (let i = 0; i < 4; i++) {
-      notes.push({ time: t, lane: (i * 2) % 4 }); t += b * 0.1875;
-    }
-    t += b * 0.25;
-  }
-  for (let i = 0; i < 4; i++) {
-    notes.push({ time: t, lane: i }); t += b;
-  }
-  return notes;
-});
 
 // --- Audio ---
 let masterGain = null;
@@ -584,13 +445,17 @@ function connectToMix(node) {
 
 // Musical scale - pentatonic for pleasant sounds
 // C major pentatonic across octaves for each lane
-const LANE_FREQS = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
+const LANE_FREQS = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 987.77, 1174.66];
 // Chord voicings per lane for rich hits
 const LANE_CHORDS = [
   [261.63, 329.63, 523.25],    // C major (C4, E4, C5)
   [329.63, 392.00, 659.25],    // Em (E4, G4, E5)
   [392.00, 523.25, 783.99],    // G (G4, C5, G5)
   [523.25, 659.25, 1046.50],   // C high (C5, E5, C6)
+  [659.25, 783.99, 1318.51],   // E high
+  [783.99, 987.77, 1567.98],   // G high
+  [987.77, 1174.66, 1975.53],  // B high
+  [1174.66,1318.51, 2349.32],  // D high
 ];
 
 function playTone(lane, quality) {
@@ -951,8 +816,17 @@ function drawParticles() {
 }
 
 // --- Layout Helpers ---
-function getLaneWidth() { return Math.min(80, W / 6); }
-function getPlayfieldWidth() { return getLaneWidth() * NUM_LANES + (NUM_LANES + 1) * 8; }
+function getLaneWidth() {
+  const n = getNumLanes();
+  const centerExtra = oneHandMode ? 0 : CENTER_GAP_2H;
+  return Math.min(72, (W - centerExtra - (n + 1) * 8 - 40) / n);
+}
+function getPlayfieldWidth() {
+  const lw = getLaneWidth();
+  const n = getNumLanes();
+  const centerExtra = oneHandMode ? 0 : CENTER_GAP_2H;
+  return lw * n + (n + 1) * 8 + centerExtra;
+}
 function getPlayfieldX() { return (W - getPlayfieldWidth()) / 2; }
 function getHitY() {
   const bottomMargin = isTouchDevice ? TOUCH_BUTTON_HEIGHT + 80 : Math.max(160, H * 0.2);
@@ -961,7 +835,9 @@ function getHitY() {
 function getLaneX(lane) {
   const pfx = getPlayfieldX();
   const lw = getLaneWidth();
-  return pfx + 8 + lane * (lw + 8) + lw / 2;
+  let x = pfx + 8 + lane * (lw + 8) + lw / 2;
+  if (!oneHandMode && lane >= twoHandCount) x += CENTER_GAP_2H;
+  return x;
 }
 
 // --- Multiplier ---
@@ -994,7 +870,10 @@ function startSong(index) {
   const song = songs[index];
   currentNotes = song.notes.map(n => ({ ...n, hit: false, missed: false, missAnim: 0 }));
   totalNotes = currentNotes.length;
-  activeNoteIndex = [0, 0, 0, 0];
+  const numLanesNow = getNumLanes();
+  activeNoteIndex = new Array(numLanesNow).fill(0);
+  lanePressed = new Array(numLanesNow).fill(false);
+  hitFlash = new Array(numLanesNow).fill(0);
   score = 0;
   displayScore = 0;
   combo = 0;
@@ -1003,7 +882,6 @@ function startSong(index) {
   goods = 0;
   misses = 0;
   particles = [];
-  hitFlash = [0, 0, 0, 0];
   judgmentText = '';
   judgmentTimer = 0;
   milestoneText = '';
@@ -1173,9 +1051,15 @@ function drawPlayfield() {
   ctx.fillStyle = grad;
   ctx.fillRect(pfx, 0, pfw, H);
 
-  // Lane dividers
-  for (let i = 0; i <= NUM_LANES; i++) {
-    const x = pfx + i * (lw + 8) + 4;
+  // Lane dividers + 2H center gap
+  const numLanes = getNumLanes();
+  for (let i = 0; i <= numLanes; i++) {
+    // In 2H mode, shift dividers right of the gap and skip the one inside the gap
+    let x = pfx + i * (lw + 8) + 4;
+    if (!oneHandMode) {
+      if (i === twoHandCount) continue; // center gap — no divider line here
+      if (i > twoHandCount) x += CENTER_GAP_2H;
+    }
     ctx.strokeStyle = '#ffffff15';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -1184,16 +1068,17 @@ function drawPlayfield() {
     ctx.stroke();
   }
 
-  // 2H mode: prominent center divider + hand tints
+  // 2H mode: hand tints + glowing center divider
   if (!oneHandMode && !customKeyCodes) {
-    const cx = pfx + 2 * (lw + 8) + 4;
-    // Subtle background tints for left/right hands
-    const halfW = 2 * (lw + 8);
+    const leftW = twoHandCount * (lw + 8);
+    const rightStart = pfx + leftW + CENTER_GAP_2H;
+    // Subtle tints
     ctx.fillStyle = '#3399ff06';
-    ctx.fillRect(pfx, 0, halfW, H);
+    ctx.fillRect(pfx, 0, leftW, H);
     ctx.fillStyle = '#ff336606';
-    ctx.fillRect(pfx + halfW, 0, halfW, H);
-    // Glowing center divider
+    ctx.fillRect(rightStart, 0, leftW, H);
+    // Glowing center divider (in the middle of the gap)
+    const cx = pfx + leftW + CENTER_GAP_2H / 2;
     ctx.save();
     ctx.strokeStyle = '#ffffff50';
     ctx.lineWidth = 3;
@@ -1204,9 +1089,9 @@ function drawPlayfield() {
     ctx.lineTo(cx, H);
     ctx.stroke();
     ctx.restore();
-    // L / R hand labels at top
-    const lxLeft = (getLaneX(0) + getLaneX(1)) / 2;
-    const lxRight = (getLaneX(2) + getLaneX(3)) / 2;
+    // L / R labels
+    const lxLeft = (getLaneX(0) + getLaneX(twoHandCount - 1)) / 2;
+    const lxRight = (getLaneX(twoHandCount) + getLaneX(numLanes - 1)) / 2;
     ctx.fillStyle = '#3399ff50';
     ctx.font = 'bold 11px monospace';
     ctx.textAlign = 'center';
@@ -1227,7 +1112,7 @@ function drawPlayfield() {
   ctx.stroke();
 
   // Lane hit zones
-  for (let lane = 0; lane < NUM_LANES; lane++) {
+  for (let lane = 0; lane < numLanes; lane++) {
     const lx = getLaneX(lane);
     const flash = hitFlash[lane];
     const pressed = lanePressed[lane];
@@ -1554,9 +1439,10 @@ function drawTouchButtons() {
 
   const btnH = TOUCH_BUTTON_HEIGHT;
   const btnY = H - btnH;
-  const btnW = W / NUM_LANES;
+  const numLanesTouch = getNumLanes();
+  const btnW = W / numLanesTouch;
 
-  for (let lane = 0; lane < NUM_LANES; lane++) {
+  for (let lane = 0; lane < numLanesTouch; lane++) {
     const bx = lane * btnW;
     const pressed = lanePressed[lane];
     const flash = hitFlash[lane];
@@ -1654,13 +1540,16 @@ function drawTitleScreen(time) {
     }
   }
 
-  // One-hand mode indicator (keyboard only)
+  // Mode indicator (keyboard only)
   if (!isTouchDevice) {
     let modeLabel;
     if (customKeyCodes) {
       modeLabel = `Custom: ${customKeyLabels.join(' ')}`;
+    } else if (oneHandMode) {
+      modeLabel = `1H · ${oneHandCount} fingers (${getActiveKeyLabels().join(' ')})`;
     } else {
-      modeLabel = oneHandMode ? 'Mode: One-Hand (F G H J)' : 'Mode: Two-Hand (D F J K)';
+      const lab = getActiveKeyLabels();
+      modeLabel = `2H · ${twoHandCount}/hand (${lab.slice(0,twoHandCount).join(' ')} | ${lab.slice(twoHandCount).join(' ')})`;
     }
     ctx.fillStyle = customKeyCodes ? '#aa66ffaa' : '#ffffff55';
     ctx.font = `${Math.min(14, W / 40)}px monospace`;
@@ -1766,10 +1655,12 @@ function drawSongSelect() {
 
   // Songs list
   const listTop = 100;
+  const numLanesNow = getNumLanes();
   const itemH = Math.min(90, (H - 220) / songs.length);
 
   for (let i = 0; i < songs.length; i++) {
     const s = songs[i];
+    const compatible = s.minLanes <= numLanesNow;
     const y = listTop + i * itemH + itemH / 2;
     const isSelected = i === selectedSong;
 
@@ -1777,7 +1668,7 @@ function drawSongSelect() {
     if (isSelected) {
       const boxW = Math.min(520, W * 0.85);
       ctx.fillStyle = '#ffffff08';
-      ctx.strokeStyle = '#ff3366';
+      ctx.strokeStyle = compatible ? '#ff3366' : '#ffffff22';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.roundRect(W / 2 - boxW / 2, y - itemH / 2 + 4, boxW, itemH - 8, 8);
@@ -1785,32 +1676,37 @@ function drawSongSelect() {
       ctx.stroke();
 
       // Animated arrow indicator
-      const arrowBounce = Math.sin(titlePulse * 3) * 3;
-      ctx.fillStyle = '#ff3366';
-      ctx.font = 'bold 20px monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText('>', W / 2 - boxW / 2 + 12 + arrowBounce, y - 4);
+      if (compatible) {
+        const arrowBounce = Math.sin(titlePulse * 3) * 3;
+        ctx.fillStyle = '#ff3366';
+        ctx.font = 'bold 20px monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText('>', W / 2 - boxW / 2 + 12 + arrowBounce, y - 4);
+      }
     }
 
     ctx.textAlign = 'center';
 
     // Song name
-    ctx.fillStyle = isSelected ? '#ffffff' : '#ffffff88';
+    ctx.fillStyle = compatible ? (isSelected ? '#ffffff' : '#ffffff88') : '#ffffff30';
     ctx.font = `bold ${Math.min(22, W / 25)}px monospace`;
     ctx.fillText(s.name, W / 2, y - 14);
 
-    // Difficulty info
-    ctx.fillStyle = isSelected ? '#ffffff88' : '#ffffff44';
+    // Difficulty info / lock notice
     ctx.font = `${Math.min(14, W / 40)}px monospace`;
-    const stars = '\u2605'.repeat(s.stars) + '\u2606'.repeat(5 - s.stars);
-    ctx.fillText(`${s.difficulty}  ${stars}  ${s.bpm} BPM  ${s.notes.length} notes`, W / 2, y + 10);
-
-    // High score for this song
-    const hs = highScores[s.name];
-    if (hs) {
-      ctx.fillStyle = isSelected ? '#ffcc0088' : '#ffcc0044';
-      ctx.font = `${Math.min(12, W / 45)}px monospace`;
-      ctx.fillText(`BEST: ${hs.score.toLocaleString()}  ${hs.grade}  ${hs.accuracy.toFixed(1)}%`, W / 2, y + 28);
+    if (compatible) {
+      ctx.fillStyle = isSelected ? '#ffffff88' : '#ffffff44';
+      const stars = '\u2605'.repeat(s.stars) + '\u2606'.repeat(5 - s.stars);
+      ctx.fillText(`${s.difficulty}  ${stars}  ${s.bpm} BPM  ${s.notes.length} notes`, W / 2, y + 10);
+      const hs = highScores[s.name];
+      if (hs) {
+        ctx.fillStyle = isSelected ? '#ffcc0088' : '#ffcc0044';
+        ctx.font = `${Math.min(12, W / 45)}px monospace`;
+        ctx.fillText(`BEST: ${hs.score.toLocaleString()}  ${hs.grade}  ${hs.accuracy.toFixed(1)}%`, W / 2, y + 28);
+      }
+    } else {
+      ctx.fillStyle = '#ffffff25';
+      ctx.fillText(`needs ${s.minLanes} lanes — TAB to change mode`, W / 2, y + 10);
     }
   }
 
@@ -1826,13 +1722,14 @@ function drawSongSelect() {
   if (!isTouchDevice) {
     let modeStatus, modeColor;
     if (customKeyCodes) {
-      modeStatus = `Custom Keys: ${customKeyLabels.join('  ')}`;
+      modeStatus = `Custom: ${customKeyLabels.join(' ')}`;
       modeColor = '#aa66ffaa';
     } else if (oneHandMode) {
-      modeStatus = 'Mode: One-Hand (F G H J)';
+      modeStatus = `1H · ${oneHandCount} fingers  (${getActiveKeyLabels().join(' ')})`;
       modeColor = '#ffcc0088';
     } else {
-      modeStatus = 'Mode: Two-Hand (D F J K)';
+      const lab = getActiveKeyLabels();
+      modeStatus = `2H · ${twoHandCount}/hand  (${lab.slice(0,twoHandCount).join(' ')} | ${lab.slice(twoHandCount).join(' ')})`;
       modeColor = '#ffffff55';
     }
     ctx.fillStyle = modeColor;
@@ -1845,7 +1742,7 @@ function drawSongSelect() {
   ctx.font = `${Math.min(15, W / 36)}px monospace`;
   ctx.fillText(isTouchDevice
     ? 'Tap a song to select \u2022 Tap again to play'
-    : 'UP/DOWN = navigate | ENTER = play | TAB = 1H/2H | K = custom keys | ESC = back', W / 2, H - 40);
+    : 'UP/DOWN = navigate | ENTER = play | TAB = cycle mode | K = custom keys | ESC = back', W / 2, H - 40);
 }
 
 function drawKeyBindScreen() {
@@ -2123,7 +2020,14 @@ window.addEventListener('keydown', (e) => {
     case 'select':
       if (e.code === 'Tab') {
         e.preventDefault();
-        oneHandMode = !oneHandMode;
+        // Cycle: 2H-2, 2H-3, 2H-4, 1H-3, 1H-4, 1H-5 → back to 2H-2
+        if (!oneHandMode) {
+          if (twoHandCount < 4) { twoHandCount++; }
+          else { oneHandMode = true; oneHandCount = 3; }
+        } else {
+          if (oneHandCount < 5) { oneHandCount++; }
+          else { oneHandMode = false; twoHandCount = 2; }
+        }
         playMenuSound();
       } else if (e.code === 'ArrowUp' || e.code === 'KeyW') {
         selectedSong = (selectedSong - 1 + songs.length) % songs.length;
@@ -2132,8 +2036,10 @@ window.addEventListener('keydown', (e) => {
         selectedSong = (selectedSong + 1) % songs.length;
         playMenuSound();
       } else if (e.code === 'Enter') {
-        playSelectSound();
-        startCountdown(selectedSong);
+        if (songs[selectedSong].minLanes <= getNumLanes()) {
+          playSelectSound();
+          startCountdown(selectedSong);
+        }
       } else if (e.code === 'KeyK') {
         e.preventDefault();
         keybindProgress = [];
@@ -2196,7 +2102,7 @@ window.addEventListener('keydown', (e) => {
         return;
       }
       { const codes = getActiveKeyCodes();
-      for (let i = 0; i < NUM_LANES; i++) {
+      for (let i = 0; i < getNumLanes(); i++) {
         if (e.code === codes[i]) {
           lanePressed[i] = true;
           hitNote(i);
@@ -2239,7 +2145,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => {
   keysDown.delete(e.code);
   const codes = getActiveKeyCodes();
-  for (let i = 0; i < NUM_LANES; i++) {
+  for (let i = 0; i < getNumLanes(); i++) {
     if (e.code === codes[i]) {
       lanePressed[i] = false;
     }
@@ -2250,9 +2156,10 @@ window.addEventListener('keyup', (e) => {
 if (isTouchDevice) {
   // Get which lane a touch x-coordinate falls in during gameplay
   function getTouchLane(x) {
-    const btnW = W / NUM_LANES;
+    const n = getNumLanes();
+    const btnW = W / n;
     const lane = Math.floor(x / btnW);
-    return Math.max(0, Math.min(NUM_LANES - 1, lane));
+    return Math.max(0, Math.min(n - 1, lane));
   }
 
   // Track active touches per lane to handle multi-touch properly
@@ -2461,7 +2368,7 @@ function gameLoop(timestamp) {
 
     case 'playing': {
       // Update timers
-      for (let i = 0; i < NUM_LANES; i++) {
+      for (let i = 0; i < hitFlash.length; i++) {
         if (hitFlash[i] > 0) hitFlash[i] -= dt;
       }
       if (judgmentTimer > 0) judgmentTimer -= dt;
