@@ -45,8 +45,8 @@ const NUM_LANES   = 4;
 const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 const TOUCH_BUTTON_HEIGHT = 100; // height of touch zone at bottom
 
-const PERFECT_WINDOW = 50;  // ms
-const GOOD_WINDOW    = 100; // ms
+const PERFECT_WINDOW = 65;  // ms
+const GOOD_WINDOW    = 130; // ms
 const TRAVEL_TIME    = 2.0; // seconds for note to fall from top to hit zone
 
 const GRADES = [
@@ -76,8 +76,67 @@ let selectedSong = 0;
 let debugMode = false;
 let oneHandMode = false;
 
-function getActiveKeyCodes() { return oneHandMode ? ONE_HAND_KEYS : KEY_CODES; }
-function getActiveKeyLabels() { return oneHandMode ? ONE_HAND_LABELS : LANE_KEYS; }
+// Custom key bindings (persisted in localStorage)
+let customKeyCodes = null;
+let customKeyLabels = null;
+
+(function loadCustomKeys() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('fretboard_customkeys') || 'null');
+    if (saved && Array.isArray(saved.codes) && saved.codes.length === 4) {
+      customKeyCodes = saved.codes;
+      customKeyLabels = saved.labels;
+    }
+  } catch {}
+})();
+
+function saveCustomKeys() {
+  try {
+    if (customKeyCodes) {
+      localStorage.setItem('fretboard_customkeys', JSON.stringify({ codes: customKeyCodes, labels: customKeyLabels }));
+    } else {
+      localStorage.removeItem('fretboard_customkeys');
+    }
+  } catch {}
+}
+
+function keyCodeToLabel(code) {
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code === 'Space') return 'SPC';
+  if (code === 'ArrowLeft') return '←';
+  if (code === 'ArrowRight') return '→';
+  if (code === 'ArrowUp') return '↑';
+  if (code === 'ArrowDown') return '↓';
+  if (code === 'BracketLeft') return '[';
+  if (code === 'BracketRight') return ']';
+  if (code === 'Semicolon') return ';';
+  if (code === 'Quote') return "'";
+  if (code === 'Comma') return ',';
+  if (code === 'Period') return '.';
+  if (code === 'Slash') return '/';
+  if (code === 'Minus') return '-';
+  if (code === 'Equal') return '=';
+  return code.slice(0, 3);
+}
+
+// Key binding capture state
+let keybindProgress = []; // { code, label }
+let keybindFromState = 'select';
+const RESERVED_BIND_KEYS = new Set([
+  'Escape','Enter','Tab','Backquote','Backspace','Delete',
+  'CapsLock','ShiftLeft','ShiftRight','ControlLeft','ControlRight',
+  'AltLeft','AltRight','MetaLeft','MetaRight',
+]);
+
+function getActiveKeyCodes() {
+  if (customKeyCodes) return customKeyCodes;
+  return oneHandMode ? ONE_HAND_KEYS : KEY_CODES;
+}
+function getActiveKeyLabels() {
+  if (customKeyLabels) return customKeyLabels;
+  return oneHandMode ? ONE_HAND_LABELS : LANE_KEYS;
+}
 
 // Gameplay state
 let songStartTime = 0;
@@ -1125,6 +1184,39 @@ function drawPlayfield() {
     ctx.stroke();
   }
 
+  // 2H mode: prominent center divider + hand tints
+  if (!oneHandMode && !customKeyCodes) {
+    const cx = pfx + 2 * (lw + 8) + 4;
+    // Subtle background tints for left/right hands
+    const halfW = 2 * (lw + 8);
+    ctx.fillStyle = '#3399ff06';
+    ctx.fillRect(pfx, 0, halfW, H);
+    ctx.fillStyle = '#ff336606';
+    ctx.fillRect(pfx + halfW, 0, halfW, H);
+    // Glowing center divider
+    ctx.save();
+    ctx.strokeStyle = '#ffffff50';
+    ctx.lineWidth = 3;
+    ctx.shadowColor = '#ffffff88';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(cx, 0);
+    ctx.lineTo(cx, H);
+    ctx.stroke();
+    ctx.restore();
+    // L / R hand labels at top
+    const lxLeft = (getLaneX(0) + getLaneX(1)) / 2;
+    const lxRight = (getLaneX(2) + getLaneX(3)) / 2;
+    ctx.fillStyle = '#3399ff50';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('L', lxLeft, 8);
+    ctx.fillStyle = '#ff336650';
+    ctx.fillText('R', lxRight, 8);
+    ctx.textBaseline = 'middle';
+  }
+
   // Hit zone line with beat pulse
   const pulseAlpha = 0.25 + beatPulse * 0.35;
   ctx.strokeStyle = `rgba(255, 255, 255, ${pulseAlpha})`;
@@ -1564,8 +1656,13 @@ function drawTitleScreen(time) {
 
   // One-hand mode indicator (keyboard only)
   if (!isTouchDevice) {
-    const modeLabel = oneHandMode ? 'Mode: One-Hand (F G H J)' : 'Mode: Two-Hand (D F J K)';
-    ctx.fillStyle = '#ffffff55';
+    let modeLabel;
+    if (customKeyCodes) {
+      modeLabel = `Custom: ${customKeyLabels.join(' ')}`;
+    } else {
+      modeLabel = oneHandMode ? 'Mode: One-Hand (F G H J)' : 'Mode: Two-Hand (D F J K)';
+    }
+    ctx.fillStyle = customKeyCodes ? '#aa66ffaa' : '#ffffff55';
     ctx.font = `${Math.min(14, W / 40)}px monospace`;
     ctx.fillText(modeLabel, W / 2, previewY + 58);
   }
@@ -1727,8 +1824,18 @@ function drawSongSelect() {
 
   // Mode status (keyboard only)
   if (!isTouchDevice) {
-    const modeStatus = oneHandMode ? 'Mode: One-Hand (F G H J)' : 'Mode: Two-Hand (D F J K)';
-    ctx.fillStyle = oneHandMode ? '#ffcc0088' : '#ffffff55';
+    let modeStatus, modeColor;
+    if (customKeyCodes) {
+      modeStatus = `Custom Keys: ${customKeyLabels.join('  ')}`;
+      modeColor = '#aa66ffaa';
+    } else if (oneHandMode) {
+      modeStatus = 'Mode: One-Hand (F G H J)';
+      modeColor = '#ffcc0088';
+    } else {
+      modeStatus = 'Mode: Two-Hand (D F J K)';
+      modeColor = '#ffffff55';
+    }
+    ctx.fillStyle = modeColor;
     ctx.font = `${Math.min(14, W / 40)}px monospace`;
     ctx.fillText(modeStatus, W / 2, H - 62);
   }
@@ -1738,7 +1845,87 @@ function drawSongSelect() {
   ctx.font = `${Math.min(15, W / 36)}px monospace`;
   ctx.fillText(isTouchDevice
     ? 'Tap a song to select \u2022 Tap again to play'
-    : 'UP/DOWN = navigate | ENTER = play | TAB = Toggle One-Hand Mode | ESC = back', W / 2, H - 40);
+    : 'UP/DOWN = navigate | ENTER = play | TAB = 1H/2H | K = custom keys | ESC = back', W / 2, H - 40);
+}
+
+function drawKeyBindScreen() {
+  drawBackground();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.fillStyle = '#ff3366';
+  ctx.font = `bold ${Math.min(36, W / 14)}px monospace`;
+  ctx.fillText('CUSTOM KEYS', W / 2, 55);
+
+  ctx.fillStyle = '#ffffff66';
+  ctx.font = `${Math.min(15, W / 36)}px monospace`;
+  ctx.fillText('Press 4 keys in order  (left → right)', W / 2, 100);
+
+  const slotSize = Math.min(72, W / 7);
+  const slotGap = 18;
+  const totalSlotW = 4 * slotSize + 3 * slotGap;
+  const startX = (W - totalSlotW) / 2;
+  const slotY = H / 2 - 10;
+
+  for (let i = 0; i < 4; i++) {
+    const sx = startX + i * (slotSize + slotGap);
+    const filled = i < keybindProgress.length;
+    const isCurrent = i === keybindProgress.length;
+
+    if (isCurrent) {
+      ctx.shadowColor = '#ff3366';
+      ctx.shadowBlur = 12;
+    }
+    ctx.strokeStyle = isCurrent ? '#ff3366' : (filled ? LANE_COLORS[i] : '#ffffff25');
+    ctx.lineWidth = isCurrent ? 3 : 2;
+    ctx.beginPath();
+    ctx.roundRect(sx, slotY - slotSize / 2, slotSize, slotSize, 10);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    if (filled) {
+      ctx.fillStyle = LANE_COLORS[i] + '33';
+      ctx.beginPath();
+      ctx.roundRect(sx, slotY - slotSize / 2, slotSize, slotSize, 10);
+      ctx.fill();
+      ctx.fillStyle = LANE_COLORS[i];
+      ctx.font = `bold ${Math.min(30, slotSize * 0.48)}px monospace`;
+      ctx.fillText(keybindProgress[i].label, sx + slotSize / 2, slotY);
+    } else if (isCurrent) {
+      if (Math.floor(Date.now() / 500) % 2 === 0) {
+        ctx.fillStyle = '#ff3366aa';
+        ctx.font = `bold ${Math.min(30, slotSize * 0.48)}px monospace`;
+        ctx.fillText('_', sx + slotSize / 2, slotY);
+      }
+    } else {
+      ctx.fillStyle = '#ffffff18';
+      ctx.font = `${Math.min(22, slotSize * 0.36)}px monospace`;
+      ctx.fillText('?', sx + slotSize / 2, slotY);
+    }
+
+    ctx.fillStyle = '#ffffff40';
+    ctx.font = `${Math.min(12, W / 55)}px monospace`;
+    ctx.fillText(['LANE 1','LANE 2','LANE 3','LANE 4'][i], sx + slotSize / 2, slotY + slotSize / 2 + 16);
+  }
+
+  const activeLabels = getActiveKeyLabels();
+  ctx.fillStyle = '#ffffff35';
+  ctx.font = `${Math.min(14, W / 40)}px monospace`;
+  ctx.fillText(`Current: ${activeLabels.join('  ')}${customKeyCodes ? ' (custom)' : ''}`, W / 2, slotY + slotSize / 2 + 52);
+
+  ctx.fillStyle = '#ffffff44';
+  ctx.font = `${Math.min(14, W / 40)}px monospace`;
+  ctx.fillText('BACKSPACE = undo last   DEL = clear custom   ESC = cancel', W / 2, H - 72);
+
+  if (keybindProgress.length === 4) {
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(Date.now() / 400));
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#00ff88';
+    ctx.font = `bold ${Math.min(20, W / 28)}px monospace`;
+    ctx.fillText('ENTER to save', W / 2, H - 40);
+    ctx.globalAlpha = 1;
+  }
 }
 
 function drawCountdown() {
@@ -1947,8 +2134,45 @@ window.addEventListener('keydown', (e) => {
       } else if (e.code === 'Enter') {
         playSelectSound();
         startCountdown(selectedSong);
+      } else if (e.code === 'KeyK') {
+        e.preventDefault();
+        keybindProgress = [];
+        keybindFromState = 'select';
+        state = 'keybind';
+        playMenuSound();
       } else if (e.code === 'Escape') {
         state = 'title';
+      }
+      break;
+
+    case 'keybind':
+      if (e.code === 'Escape') {
+        state = keybindFromState;
+        playMenuSound();
+      } else if (e.code === 'Backspace') {
+        if (keybindProgress.length > 0) {
+          keybindProgress.pop();
+          playMenuSound();
+        }
+      } else if (e.code === 'Delete') {
+        customKeyCodes = null;
+        customKeyLabels = null;
+        saveCustomKeys();
+        keybindProgress = [];
+        playMenuSound();
+      } else if (e.code === 'Enter') {
+        if (keybindProgress.length === 4) {
+          customKeyCodes = keybindProgress.map(k => k.code);
+          customKeyLabels = keybindProgress.map(k => k.label);
+          saveCustomKeys();
+          state = keybindFromState;
+          playSelectSound();
+        }
+      } else if (!RESERVED_BIND_KEYS.has(e.code) && keybindProgress.length < 4) {
+        if (!keybindProgress.some(k => k.code === e.code)) {
+          keybindProgress.push({ code: e.code, label: keyCodeToLabel(e.code) });
+          playMenuSound();
+        }
       }
       break;
 
@@ -2215,6 +2439,10 @@ function gameLoop(timestamp) {
     case 'select':
       titlePulse += 0.03 * (dt / 0.016); // frame-rate independent
       drawSongSelect();
+      break;
+
+    case 'keybind':
+      drawKeyBindScreen();
       break;
 
     case 'countdown':
